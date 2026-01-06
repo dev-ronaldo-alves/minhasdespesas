@@ -6,6 +6,8 @@
     <title>Minhas Despesas</title>
     <!-- Carrega Tailwind CSS para estilização -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carrega D3.js para criação de gráficos -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         /* Define a fonte Inter (padrão de design) */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
@@ -20,6 +22,13 @@
         #expensesList::-webkit-scrollbar-thumb {
             background-color: #cbd5e1; /* gray-300 */
             border-radius: 3px;
+        }
+        /* Estilos básicos para o gráfico D3 */
+        .bar {
+            transition: all 0.3s ease;
+        }
+        .bar:hover {
+            opacity: 0.8;
         }
     </style>
 </head>
@@ -42,6 +51,15 @@
             </select>
             <p class="text-sm text-gray-500 mt-2">Você está visualizando e lançando despesas para <span id="activeUserName" class="font-semibold text-indigo-600">RONALDO</span>.</p>
         </div>
+        
+        <!-- Seção de Análise Gráfica -->
+        <div class="mb-8 p-6 bg-white shadow-xl rounded-2xl border border-gray-100">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Gráfico de Evolução Mensal (Valores)</h2>
+            <div id="monthlyChartContainer" class="w-full">
+                <!-- Gráfico D3 será inserido aqui -->
+                <p id="chartStatus" class="text-center text-gray-500">Aguardando dados...</p>
+            </div>
+        </div>
 
         <!-- Seção de Resumo -->
         <div class="mb-8 p-6 bg-white shadow-xl rounded-2xl border border-gray-100">
@@ -54,7 +72,7 @@
 
         <!-- Formulário de Despesas -->
         <div class="mb-8 p-6 bg-white shadow-xl rounded-2xl border border-gray-100">
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">Lançar Nova Despesa</h2>
+            <h2 id="formTitle" class="text-xl font-semibold text-gray-700 mb-4">Lançar Nova Despesa</h2>
             <form id="expenseForm" class="space-y-4">
                 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -80,12 +98,34 @@
                            class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border">
                 </div>
                 
-                <button type="submit" id="submitButton"
-                        class="w-full py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:opacity-50">
-                    Lançar Despesa
-                </button>
+                <div id="formActions" class="flex space-x-4">
+                    <button type="submit" id="submitButton"
+                            class="flex-grow py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:opacity-50">
+                        Lançar Despesa
+                    </button>
+                    <button type="button" id="cancelEditButton"
+                            class="hidden py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 transition duration-150 ease-in-out">
+                        Cancelar
+                    </button>
+                </div>
             </form>
         </div>
+        
+        <!-- Ações Adicionais (Importar/Exportar) -->
+        <div class="mb-8 p-6 bg-white shadow-xl rounded-2xl border border-gray-100">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Ações de Dados</h2>
+            <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
+                <button id="exportButton" class="w-full sm:w-auto py-2.5 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out">
+                    Exportar para Excel (CSV)
+                </button>
+                <label for="importFile" class="w-full sm:w-auto py-2.5 px-4 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-yellow-400 hover:bg-yellow-500 cursor-pointer text-center transition duration-150 ease-in-out">
+                    Importar do Excel (CSV)
+                </label>
+                <input type="file" id="importFile" accept=".csv" class="hidden">
+            </div>
+            <p class="text-xs text-gray-500 mt-4">Para importar, use o formato CSV com as colunas: Data (YYYY-MM-DD);Nome;Valor (Ex: 12,50);Usuário.</p>
+        </div>
+
 
         <!-- Lista de Despesas -->
         <div class="p-6 bg-white shadow-xl rounded-2xl border border-gray-100">
@@ -104,12 +144,12 @@
         <div id="messageArea" class="fixed bottom-4 right-4 z-50"></div>
     </div>
 
-    <!-- Importações do Firebase -->
+    <!-- Importações do Firebase e Script Principal -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
-            getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, setLogLevel 
+            getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, setLogLevel, doc, deleteDoc, updateDoc
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Variáveis globais fornecidas pelo ambiente
@@ -125,6 +165,13 @@
         let selectedAppUser = 'RONALDO'; // Usuário da aplicação (RONALDO ou ADRIANA)
         let allUserExpenses = []; // Cache para todas as despesas carregadas do Firestore
         let unsubscribeListener = null; // Função para parar de escutar o Firestore
+        let editingExpenseId = null; // ID da despesa em edição
+
+        // Referências DOM
+        const submitButton = document.getElementById('submitButton');
+        const cancelEditButton = document.getElementById('cancelEditButton');
+        const expenseForm = document.getElementById('expenseForm');
+        const formTitle = document.getElementById('formTitle');
 
         // Configura o console para logar atividades do Firebase (opcional, mas útil)
         setLogLevel('Debug');
@@ -205,10 +252,46 @@
             }
         }
 
-        // 3. Adicionar Despesa
-        const expenseForm = document.getElementById('expenseForm');
-        const submitButton = document.getElementById('submitButton');
+        // 3. Funções de manipulação do formulário (Criação/Edição)
+        
+        // Entra no modo de edição: Preenche o formulário e muda o estado
+        function startEditing(expense) {
+            editingExpenseId = expense.id;
+            
+            document.getElementById('expenseDate').value = expense.date;
+            document.getElementById('expenseName').value = expense.name;
+            document.getElementById('expenseValue').value = expense.value;
+            document.getElementById('appUserSelector').value = expense.applicationUser;
+            
+            formTitle.textContent = "Editar Despesa";
+            submitButton.textContent = "Atualizar Despesa";
+            submitButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+            submitButton.classList.add('bg-green-600', 'hover:bg-green-700');
+            cancelEditButton.classList.remove('hidden');
 
+            // Rola para o topo do formulário
+            expenseForm.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Sai do modo de edição: Limpa o formulário e muda o estado
+        function cancelEditing() {
+            editingExpenseId = null;
+            
+            expenseForm.reset();
+            // Define a data atual como padrão após o reset para conveniência
+            document.getElementById('expenseDate').valueAsDate = new Date();
+
+            formTitle.textContent = "Lançar Nova Despesa";
+            submitButton.textContent = "Lançar Despesa";
+            submitButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+            submitButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+            cancelEditButton.classList.add('hidden');
+        }
+
+        cancelEditButton.addEventListener('click', cancelEditing);
+
+
+        // Handler principal do formulário (Lançar ou Atualizar)
         expenseForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -220,7 +303,7 @@
             const date = document.getElementById('expenseDate').value;
             const name = document.getElementById('expenseName').value.trim();
             const value = parseFloat(document.getElementById('expenseValue').value);
-            const applicationUser = document.getElementById('appUserSelector').value; // Pega o usuário da aplicação
+            const applicationUser = document.getElementById('appUserSelector').value;
 
             if (!date || !name || isNaN(value) || value <= 0) {
                 displayMessage("Por favor, preencha todos os campos corretamente.", "error");
@@ -228,32 +311,46 @@
             }
 
             submitButton.disabled = true;
-            submitButton.textContent = 'Lançando...';
+            submitButton.textContent = editingExpenseId ? 'Atualizando...' : 'Lançando...';
+
+            const expenseData = {
+                date: date,
+                name: name,
+                value: value,
+                applicationUser: applicationUser,
+            };
 
             try {
-                // Caminho da coleção (dados privados do usuário)
-                const expensesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/expenses`);
+                const collectionPath = `artifacts/${appId}/users/${userId}/expenses`;
                 
-                await addDoc(expensesCollectionRef, {
-                    date: date, // YYYY-MM-DD
-                    name: name,
-                    value: value,
-                    userId: userId,
-                    applicationUser: applicationUser, // Salva o usuário RONALDO ou ADRIANA
-                    createdAt: serverTimestamp() // Marca o momento da criação
-                });
-
-                displayMessage(`Despesa lançada para ${applicationUser} com sucesso!`, "success");
-                expenseForm.reset();
-                // Define a data atual como padrão após o reset para conveniência
-                document.getElementById('expenseDate').valueAsDate = new Date();
-
+                if (editingExpenseId) {
+                    // Modo Edição (Update)
+                    const expenseDocRef = doc(db, collectionPath, editingExpenseId);
+                    await updateDoc(expenseDocRef, expenseData);
+                    displayMessage(`Despesa de "${name}" atualizada com sucesso!`, "success");
+                    cancelEditing(); // Sai do modo de edição
+                } else {
+                    // Modo Lançamento (Create)
+                    const expensesCollectionRef = collection(db, collectionPath);
+                    await addDoc(expensesCollectionRef, {
+                        ...expenseData,
+                        userId: userId,
+                        createdAt: serverTimestamp()
+                    });
+                    displayMessage(`Despesa lançada para ${applicationUser} com sucesso!`, "success");
+                    expenseForm.reset();
+                    document.getElementById('expenseDate').valueAsDate = new Date();
+                }
             } catch (error) {
-                console.error("Erro ao adicionar despesa:", error);
-                displayMessage("Erro ao salvar despesa. Tente novamente.", "error");
+                console.error("Erro ao processar despesa:", error);
+                displayMessage(`Erro ao ${editingExpenseId ? 'atualizar' : 'salvar'} despesa. Tente novamente.`, "error");
             } finally {
                 submitButton.disabled = false;
-                submitButton.textContent = 'Lançar Despesa';
+                if (!editingExpenseId) {
+                    submitButton.textContent = 'Lançar Despesa';
+                } else {
+                    submitButton.textContent = 'Atualizar Despesa';
+                }
             }
         });
 
@@ -295,8 +392,306 @@
                 displayMessage("Erro de conexão com o banco de dados.", "error");
             });
         }
+
+        // 5. Função para deletar uma despesa
+        async function deleteExpense(expenseId, expenseName) {
+            if (!userId) {
+                displayMessage("Aguarde a autenticação da conta para deletar.", "error");
+                return;
+            }
+            
+            console.log(`Tentando deletar despesa: ${expenseName} (${expenseId})`);
+
+            const expenseDocRef = doc(db, `artifacts/${appId}/users/${userId}/expenses`, expenseId);
+
+            try {
+                await deleteDoc(expenseDocRef);
+                displayMessage(`Despesa "${expenseName}" removida com sucesso.`, "info");
+                // Se a despesa deletada for a que estava em edição, cancela a edição
+                if (editingExpenseId === expenseId) {
+                    cancelEditing();
+                }
+            } catch (error) {
+                console.error("Erro ao deletar despesa:", error);
+                displayMessage("Erro ao remover despesa. Tente novamente.", "error");
+            }
+        }
+
+        // 6. Função para Exportar Despesas (para CSV/Excel)
+        function exportToCsv() {
+            // Usa as despesas filtradas atualmente exibidas na tela
+            const currentExpenses = allUserExpenses.filter(expense => 
+                expense.applicationUser === selectedAppUser
+            );
+
+            if (currentExpenses.length === 0) {
+                displayMessage("Nenhuma despesa para exportar para o usuário ativo.", "error");
+                return;
+            }
+
+            // Cabeçalho compatível com o formato de importação esperado: Data;Nome;Valor;Usuario
+            const headers = ['Data', 'Nome', 'Valor', 'Usuario'];
+            
+            // Cria o cabeçalho CSV
+            let csvContent = headers.join(';') + '\n';
+
+            // Adiciona as linhas de dados
+            currentExpenses.forEach(item => {
+                // Formata o valor com vírgula para ser amigável ao Excel em PT-BR
+                const valueFormatted = (item.value || 0).toFixed(2).replace('.', ','); 
+                const row = [
+                    item.date,
+                    // Escapa delimitador (;) e aspas (") no nome para evitar quebras
+                    item.name.replace(/;/g, ',').replace(/"/g, '""'), 
+                    valueFormatted,
+                    item.applicationUser
+                ];
+                csvContent += row.join(';') + '\n';
+            });
+
+            // Cria um Blob e um link para download (BOM \uFEFF para garantir compatibilidade UTF-8 no Excel)
+            const blob = new Blob(["\uFEFF", csvContent], { type: 'text/csv;charset=utf-8;' }); 
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('href', url);
+            const today = new Date().toISOString().slice(0, 10);
+            a.setAttribute('download', `despesas_${selectedAppUser}_${today}.csv`);
+            
+            // Simula o clique para iniciar o download
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            displayMessage(`Exportação de ${currentExpenses.length} despesas concluída!`, "success");
+        }
         
-        // 5. Função de Atualização da UI (Filtra e Renderiza)
+        // 7. Função para Importar Despesas (de CSV/Excel)
+        async function importFromCsv(event) {
+            if (!userId) {
+                displayMessage("Aguarde a autenticação da conta para importar.", "error");
+                return;
+            }
+
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const csvText = e.target.result;
+                const lines = csvText.split('\n').filter(line => line.trim() !== '');
+
+                if (lines.length < 2) {
+                    displayMessage("O arquivo CSV está vazio ou tem apenas o cabeçalho.", "error");
+                    return;
+                }
+                
+                // Ignora o cabeçalho (primeira linha)
+                const dataLines = lines.slice(1);
+                const collectionPath = `artifacts/${appId}/users/${userId}/expenses`;
+                let successfullyImported = 0;
+                let failedImports = 0;
+                
+                displayMessage("Iniciando importação. Por favor, aguarde...", "info");
+
+                for (const line of dataLines) {
+                    // Assume que o delimitador é ponto e vírgula (padrão em PT-BR)
+                    const parts = line.split(';');
+                    
+                    // Espera 4 colunas: Data;Nome;Valor;Usuario (ou 3 se Usuario for omitido)
+                    if (parts.length < 3) { 
+                        console.warn("Linha ignorada: Colunas insuficientes.", line);
+                        failedImports++;
+                        continue;
+                    }
+
+                    const rawDate = parts[0].trim();
+                    const name = parts[1].trim();
+                    // Converte vírgula para ponto e depois para número (padrão PT-BR)
+                    const rawValue = parts[2].trim().replace(',', '.'); 
+                    const value = parseFloat(rawValue);
+                    
+                    // O usuário da aplicação no CSV é opcional, usa o ativo como padrão
+                    const appUser = parts.length > 3 && parts[3].trim() ? parts[3].trim() : selectedAppUser; 
+
+                    // Validação simples
+                    if (!rawDate || !name || isNaN(value) || value <= 0) {
+                        console.warn("Linha ignorada: Dados inválidos (Data, Nome ou Valor).", line);
+                        failedImports++;
+                        continue;
+                    }
+                    
+                    // Verifica se a data está no formato YYYY-MM-DD
+                    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                    if (!dateRegex.test(rawDate)) {
+                        console.warn("Linha ignorada: Formato de data inválido. Use YYYY-MM-DD.", line);
+                        failedImports++;
+                        continue;
+                    }
+
+                    try {
+                        // Salva despesa no Firestore
+                        await addDoc(collection(db, collectionPath), {
+                            date: rawDate,
+                            name: name,
+                            value: value,
+                            applicationUser: appUser,
+                            userId: userId,
+                            createdAt: serverTimestamp()
+                        });
+                        successfullyImported++;
+                    } catch (error) {
+                        console.error("Erro ao salvar despesa importada:", error);
+                        failedImports++;
+                    }
+                }
+
+                if (successfullyImported > 0) {
+                    displayMessage(`Importação concluída: ${successfullyImported} despesas adicionadas.`, "success");
+                }
+                if (failedImports > 0) {
+                    displayMessage(`${failedImports} linhas falharam ou foram ignoradas durante a importação. (Detalhes no console)`, "error");
+                }
+                
+                // Limpa o input file para que o mesmo arquivo possa ser importado novamente
+                document.getElementById('importFile').value = '';
+            };
+
+            reader.onerror = () => {
+                displayMessage("Erro ao ler o arquivo.", "error");
+            };
+
+            reader.readAsText(file, 'UTF-8');
+        }
+        
+        // 8. Funções de Gráfico (D3.js)
+        
+        // Processa os dados para agrupar por mês/ano
+        function processMonthlyData(expenses) {
+            const monthlyTotals = new Map();
+
+            expenses.forEach(expense => {
+                // Filtra apenas despesas com valor válido
+                if (typeof expense.value !== 'number' || expense.value <= 0) return;
+                
+                const yearMonth = expense.date.substring(0, 7); // YYYY-MM
+                const currentTotal = monthlyTotals.get(yearMonth) || 0;
+                monthlyTotals.set(yearMonth, currentTotal + expense.value);
+            });
+
+            const data = Array.from(monthlyTotals, ([month, total]) => ({ month, total }))
+                // Ordena cronologicamente
+                .sort((a, b) => a.month.localeCompare(b.month)); 
+
+            return data;
+        }
+
+        // Renderiza o gráfico D3
+        function renderMonthlyChart(filteredExpenses) {
+            const container = d3.select("#monthlyChartContainer");
+            container.select("svg").remove(); // Remove o gráfico anterior
+            
+            const chartStatus = document.getElementById('chartStatus');
+            const data = processMonthlyData(filteredExpenses);
+
+            // --- Checagem de Dados ---
+            if (data.length === 0) {
+                chartStatus.textContent = `Nenhuma despesa para o usuário ${selectedAppUser} para análise gráfica.`;
+                chartStatus.classList.remove('hidden');
+                return;
+            }
+            chartStatus.classList.add('hidden');
+
+            // --- Configuração das Dimensões ---
+            const margin = { top: 30, right: 30, bottom: 60, left: 70 };
+            const containerWidth = document.getElementById('monthlyChartContainer').clientWidth;
+            const width = containerWidth - margin.left - margin.right;
+            const height = 350 - margin.top - margin.bottom;
+
+            // --- Criação do SVG ---
+            const svg = container.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+              .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // --- Definição das Escalas ---
+            const x = d3.scaleBand()
+                .range([0, width])
+                .domain(data.map(d => d.month))
+                .padding(0.2);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(data, d => d.total) * 1.1]) 
+                .range([height, 0]);
+            
+            // Formatador para o Eixo Y (R$ 0,00)
+            const formatYAxis = (d) => {
+                // Formata para PT-BR, mas sem o símbolo R$ para não poluir o eixo
+                return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(d);
+            };
+
+            // --- Eixos ---
+            // Eixo X (Meses)
+            svg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => {
+                    // Converte YYYY-MM para MM/YYYY
+                    const [year, month] = d.split('-');
+                    return `${month}/${year}`;
+                }))
+                .selectAll("text")
+                  .attr("transform", "translate(-10,0)rotate(-45)")
+                  .style("text-anchor", "end")
+                  .style("font-size", "10px")
+                  .style("fill", "#4b5563"); // gray-600
+                
+            // Eixo Y (Valores)
+            svg.append("g")
+                .call(d3.axisLeft(y).tickFormat(formatYAxis))
+                .style("font-size", "10px")
+                .style("fill", "#4b5563"); // gray-600
+
+            // --- Barras ---
+            svg.selectAll(".bar")
+                .data(data)
+                .enter().append("rect")
+                .attr("class", "bar")
+                .attr("x", d => x(d.month))
+                .attr("y", d => y(d.total))
+                .attr("width", x.bandwidth())
+                .attr("height", d => height - y(d.total))
+                .attr("rx", 4) // Bordas arredondadas
+                .attr("ry", 4)
+                .attr("fill", "#ef4444") // red-500
+                .on("mouseover", function(event, d) {
+                    // Destaca a barra
+                    d3.select(this).attr("fill", "#dc2626"); // red-600
+
+                    // Mostra o valor completo no título da barra
+                    d3.select(this).append("title").text(formatCurrency(d.total));
+                })
+                .on("mouseout", function() {
+                    // Volta a cor original
+                    d3.select(this).attr("fill", "#ef4444");
+                });
+
+            // --- Rótulos (Valores acima das Barras) ---
+            svg.selectAll(".label")
+                .data(data)
+                .enter().append("text")
+                .attr("class", "label")
+                .attr("x", d => x(d.month) + x.bandwidth() / 2)
+                .attr("y", d => y(d.total) - 8)
+                .attr("text-anchor", "middle")
+                .text(d => formatCurrency(d.total))
+                .style("font-size", "10px")
+                .style("font-weight", "600")
+                .style("fill", "#1f2937"); 
+        }
+
+        
+        // 9. Função de Atualização da UI (Filtra e Renderiza)
         function updateUI() {
             // Garante que os elementos existam antes de tentar manipulá-los
             const loadingMessage = document.getElementById('loadingMessage');
@@ -334,7 +729,10 @@
             // 4. Renderizar a lista de despesas filtrada
             renderExpenses(filteredExpenses);
 
-            // 5. Exibir mensagens de estado
+            // 5. Renderizar o gráfico mensal
+            renderMonthlyChart(filteredExpenses);
+
+            // 6. Exibir mensagens de estado
             loadingMessage.classList.add('hidden');
             noExpensesUserDisplay.textContent = selectedAppUser;
             if (filteredExpenses.length === 0) {
@@ -343,24 +741,37 @@
                 noExpensesMessage.classList.add('hidden');
             }
 
-            // Atualiza o nome do usuário ativo no cabeçalho
+            // 7. Atualiza o nome do usuário ativo no cabeçalho
             document.getElementById('activeUserName').textContent = selectedAppUser;
+
+            // 8. Se estiver editando, garante que o formulário reflita o usuário selecionado (caso o usuário tenha mudado no seletor)
+            if (editingExpenseId) {
+                // Preenche o campo do seletor com o usuário da despesa em edição
+                const currentExpense = allUserExpenses.find(e => e.id === editingExpenseId);
+                if (currentExpense) {
+                    document.getElementById('appUserSelector').value = currentExpense.applicationUser;
+                }
+            }
         }
 
-        // 6. Configuração do Seletor de Usuário da Aplicação
+        // 10. Configuração do Seletor de Usuário da Aplicação
         const appUserSelector = document.getElementById('appUserSelector');
         if (appUserSelector) {
             appUserSelector.addEventListener('change', (e) => {
                 selectedAppUser = e.target.value;
-                // Chama updateUI para re-filtrar e renderizar a lista
+                // Sai do modo de edição ao trocar de usuário, se necessário
+                if (editingExpenseId) {
+                    cancelEditing();
+                }
+                // Chama updateUI para re-filtrar e renderizar a lista e o gráfico
                 updateUI(); 
             });
         }
 
-        // 7. Função de Renderização - Adiciona o nome do usuário da aplicação
+        // 11. Função de Renderização - Adiciona os botões de editar e deletar
         function renderExpenses(expenses) {
             const listElement = document.getElementById('expensesList');
-            // Como as mensagens de status agora estão fora, podemos limpar o contêiner da lista com segurança.
+            // Limpa o contêiner
             listElement.innerHTML = ''; 
 
             if (expenses.length === 0) return;
@@ -368,22 +779,55 @@
             expenses.forEach(expense => {
                 const dateParts = expense.date.split('-'); // [YYYY, MM, DD]
                 const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`; // DD/MM/YYYY
-                
-                // O applicationUser é garantido pela função setupExpensesListener
                 const appUserName = expense.applicationUser; 
 
-                const itemHtml = `
-                    <div class="flex justify-between items-center p-4 bg-gray-50 hover:bg-gray-100 rounded-lg shadow-sm border border-gray-100 transition duration-150 ease-in-out">
-                        <div>
-                            <p class="text-base font-medium text-gray-800">${expense.name}</p>
-                            <p class="text-xs text-gray-500 mt-0.5">Data: ${formattedDate} | Usuário: <span class="font-semibold text-indigo-600">${appUserName}</span></p>
-                        </div>
+                // Cria o elemento da despesa
+                const item = document.createElement('div');
+                item.className = "flex justify-between items-center p-4 bg-gray-50 hover:bg-gray-100 rounded-lg shadow-sm border border-gray-100 transition duration-150 ease-in-out";
+                
+                // Conteúdo HTML
+                item.innerHTML = `
+                    <div class="flex-grow">
+                        <p class="text-base font-medium text-gray-800">${expense.name}</p>
+                        <p class="text-xs text-gray-500 mt-0.5">Data: ${formattedDate} | Usuário: <span class="font-semibold text-indigo-600">${appUserName}</span></p>
+                    </div>
+                    <div class="flex items-center space-x-4">
                         <p class="text-lg font-bold text-red-600">${formatCurrency(expense.value)}</p>
+                        
+                        <!-- Botão de Editar -->
+                        <button class="edit-btn text-gray-400 hover:text-indigo-600 transition duration-150 ease-in-out p-1 rounded-full hover:bg-indigo-100" aria-label="Editar Despesa">
+                            <!-- Ícone SVG de Lápis (lucide pencil) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil"><path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="M15 5l4 4"/></svg>
+                        </button>
+
+                        <!-- Botão de Deletar -->
+                        <button class="delete-btn text-gray-400 hover:text-red-600 transition duration-150 ease-in-out p-1 rounded-full hover:bg-red-100" aria-label="Remover Despesa">
+                            <!-- Ícone SVG de lixeira (lucide trash) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                        </button>
                     </div>
                 `;
-                listElement.insertAdjacentHTML('beforeend', itemHtml);
+
+                // Anexa o manipulador de eventos ao botão de deletar
+                const deleteButton = item.querySelector('.delete-btn');
+                deleteButton.onclick = () => {
+                    deleteExpense(expense.id, expense.name);
+                };
+
+                // Anexa o manipulador de eventos ao botão de editar
+                const editButton = item.querySelector('.edit-btn');
+                editButton.onclick = () => {
+                    startEditing(expense);
+                };
+
+                listElement.appendChild(item);
             });
         }
+        
+        // 12. Configuração dos Botões de Importação/Exportação
+        document.getElementById('exportButton').addEventListener('click', exportToCsv);
+        document.getElementById('importFile').addEventListener('change', importFromCsv);
+
     </script>
 </body>
 </html>
