@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minhas Despesas</title>
+    <!-- Carrega Tailwind CSS para estilização -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Define a fonte Inter (padrão de design) */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f7f9;
+        }
+        /* Estilos customizados para o scrollbar */
+        #expensesList::-webkit-scrollbar {
+            width: 6px;
+        }
+        #expensesList::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1; /* gray-300 */
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8">
+
+    <div id="appContainer" class="max-w-4xl mx-auto">
+        <header class="mb-8">
+            <h1 class="text-4xl font-extrabold text-gray-800 tracking-tight">Minhas Despesas</h1>
+            <p class="text-sm text-gray-500 mt-1">Controle financeiro pessoal com persistência de dados.</p>
+            <!-- ID do Usuário do Firebase para identificação da conta -->
+            <p id="userIdDisplay" class="text-xs mt-2 p-1 bg-gray-100 rounded-lg inline-block font-mono"></p>
+        </header>
+        
+        <!-- Seletor de Usuário da Aplicação (RONALDO/ADRIANA) -->
+        <div class="mb-8 p-6 bg-white shadow-xl rounded-2xl border border-gray-100">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Selecione o Usuário</h2>
+            <select id="appUserSelector" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border text-lg font-bold text-gray-800">
+                <option value="RONALDO">RONALDO</option>
+                <option value="ADRIANA">ADRIANA</option>
+            </select>
+            <p class="text-sm text-gray-500 mt-2">Você está visualizando e lançando despesas para <span id="activeUserName" class="font-semibold text-indigo-600">RONALDO</span>.</p>
+        </div>
+
+        <!-- Seção de Resumo -->
+        <div class="mb-8 p-6 bg-white shadow-xl rounded-2xl border border-gray-100">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Resumo Mensal</h2>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                <p class="text-base text-gray-500">Total de Despesas do Mês Corrente (<span id="currentMonthName"></span>) para o usuário ativo:</p>
+                <p id="monthlyTotal" class="text-3xl font-bold text-red-600 mt-2 sm:mt-0">R$ 0,00</p>
+            </div>
+        </div>
+
+        <!-- Formulário de Despesas -->
+        <div class="mb-8 p-6 bg-white shadow-xl rounded-2xl border border-gray-100">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Lançar Nova Despesa</h2>
+            <form id="expenseForm" class="space-y-4">
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Campo Data -->
+                    <div class="col-span-1">
+                        <label for="expenseDate" class="block text-sm font-medium text-gray-700">Data</label>
+                        <input type="date" id="expenseDate" required 
+                               class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border">
+                    </div>
+                    
+                    <!-- Campo Nome da Despesa -->
+                    <div class="col-span-1 md:col-span-2">
+                        <label for="expenseName" class="block text-sm font-medium text-gray-700">Nome da Despesa</label>
+                        <input type="text" id="expenseName" placeholder="Ex: Conta de Luz, Supermercado" required 
+                               class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border">
+                    </div>
+                </div>
+
+                <!-- Campo Valor -->
+                <div>
+                    <label for="expenseValue" class="block text-sm font-medium text-gray-700">Valor (R$)</label>
+                    <input type="number" id="expenseValue" step="0.01" min="0.01" placeholder="Ex: 49.90" required 
+                           class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border">
+                </div>
+                
+                <button type="submit" id="submitButton"
+                        class="w-full py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:opacity-50">
+                    Lançar Despesa
+                </button>
+            </form>
+        </div>
+
+        <!-- Lista de Despesas -->
+        <div class="p-6 bg-white shadow-xl rounded-2xl border border-gray-100">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Últimas Despesas Lançadas</h2>
+            
+            <!-- ELEMENTOS DE STATUS MOVIDOS AQUI (FORA DO expensesList) -->
+            <p id="loadingMessage" class="text-center text-gray-500">Carregando despesas...</p>
+            <p id="noExpensesMessage" class="hidden text-center text-gray-500">Nenhuma despesa lançada para <span id="noExpensesUser">RONALDO</span> ainda.</p>
+            
+            <div id="expensesList" class="space-y-3 max-h-96 overflow-y-auto">
+                <!-- Despesas serão injetadas aqui -->
+            </div>
+        </div>
+
+        <!-- Área de Mensagem (para feedback) -->
+        <div id="messageArea" class="fixed bottom-4 right-4 z-50"></div>
+    </div>
+
+    <!-- Importações do Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, setLogLevel 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Variáveis globais fornecidas pelo ambiente
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // 1. Variáveis de Estado
+        let app;
+        let db;
+        let auth;
+        let userId = null;
+        let selectedAppUser = 'RONALDO'; // Usuário da aplicação (RONALDO ou ADRIANA)
+        let allUserExpenses = []; // Cache para todas as despesas carregadas do Firestore
+        let unsubscribeListener = null; // Função para parar de escutar o Firestore
+
+        // Configura o console para logar atividades do Firebase (opcional, mas útil)
+        setLogLevel('Debug');
+
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (error) {
+            console.error("Erro ao inicializar Firebase:", error);
+            displayMessage("Erro de inicialização: Verifique a configuração do Firebase.", "error");
+        }
+
+        // Função utilitária para formatar valores monetários (Reais Brasileiros)
+        const formatCurrency = (value) => {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+            }).format(value);
+        };
+
+        // Função utilitária para exibir mensagens de feedback ao usuário
+        const displayMessage = (text, type = 'info') => {
+            const area = document.getElementById('messageArea');
+            const color = type === 'error' ? 'bg-red-500' : 'bg-green-500';
+            const html = `
+                <div class="${color} text-white p-3 rounded-lg shadow-xl mb-2 transition-opacity duration-300" role="alert">
+                    ${text}
+                </div>
+            `;
+            area.insertAdjacentHTML('beforeend', html);
+            const message = area.lastElementChild;
+            setTimeout(() => {
+                message.style.opacity = '0';
+                message.addEventListener('transitionend', () => message.remove());
+            }, 3000);
+        };
+
+        // Função para calcular o nome do mês a partir de uma data (para o cabeçalho)
+        const getCurrentMonthName = () => {
+            const date = new Date();
+            const options = { month: 'long', year: 'numeric' };
+            return date.toLocaleDateString('pt-BR', options);
+        };
+
+        document.getElementById('currentMonthName').textContent = getCurrentMonthName();
+
+        // 2. Autenticação e Configuração do Usuário
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                document.getElementById('userIdDisplay').textContent = `ID da Conta: ${userId}`;
+                console.log("Usuário autenticado:", userId);
+                setupExpensesListener(); // Configura o listener do Firestore
+            } else {
+                // Tenta fazer login com o token ou anonimamente
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                        console.log("Login com token customizado realizado.");
+                    } else {
+                        await signInAnonymously(auth);
+                        console.log("Login anônimo realizado.");
+                    }
+                } catch (error) {
+                    console.error("Erro na autenticação:", error);
+                    displayMessage("Falha na autenticação. Tente recarregar.", "error");
+                }
+            }
+        });
+
+        // Tenta iniciar a autenticação imediatamente
+        if (!auth.currentUser) {
+            if (initialAuthToken) {
+                signInWithCustomToken(auth, initialAuthToken).catch(err => console.error("Erro ao iniciar sessão com token:", err));
+            } else {
+                signInAnonymously(auth).catch(err => console.error("Erro ao iniciar sessão anonimamente:", err));
+            }
+        }
+
+        // 3. Adicionar Despesa
+        const expenseForm = document.getElementById('expenseForm');
+        const submitButton = document.getElementById('submitButton');
+
+        expenseForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!userId) {
+                displayMessage("Aguarde a autenticação da conta...", "error");
+                return;
+            }
+
+            const date = document.getElementById('expenseDate').value;
+            const name = document.getElementById('expenseName').value.trim();
+            const value = parseFloat(document.getElementById('expenseValue').value);
+            const applicationUser = document.getElementById('appUserSelector').value; // Pega o usuário da aplicação
+
+            if (!date || !name || isNaN(value) || value <= 0) {
+                displayMessage("Por favor, preencha todos os campos corretamente.", "error");
+                return;
+            }
+
+            submitButton.disabled = true;
+            submitButton.textContent = 'Lançando...';
+
+            try {
+                // Caminho da coleção (dados privados do usuário)
+                const expensesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/expenses`);
+                
+                await addDoc(expensesCollectionRef, {
+                    date: date, // YYYY-MM-DD
+                    name: name,
+                    value: value,
+                    userId: userId,
+                    applicationUser: applicationUser, // Salva o usuário RONALDO ou ADRIANA
+                    createdAt: serverTimestamp() // Marca o momento da criação
+                });
+
+                displayMessage(`Despesa lançada para ${applicationUser} com sucesso!`, "success");
+                expenseForm.reset();
+                // Define a data atual como padrão após o reset para conveniência
+                document.getElementById('expenseDate').valueAsDate = new Date();
+
+            } catch (error) {
+                console.error("Erro ao adicionar despesa:", error);
+                displayMessage("Erro ao salvar despesa. Tente novamente.", "error");
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Lançar Despesa';
+            }
+        });
+
+        // Inicializa a data do formulário para o dia atual
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('expenseDate').valueAsDate = new Date();
+        });
+
+
+        // 4. Configurar o Monitoramento das Despesas (onSnapshot)
+        function setupExpensesListener() {
+            if (!userId) return; 
+            if (unsubscribeListener) unsubscribeListener(); // Remove o listener anterior se houver
+
+            const collectionPath = `artifacts/${appId}/users/${userId}/expenses`;
+            const expensesRef = collection(db, collectionPath);
+            
+            // Cria a consulta: Ordena por data (mais recente primeiro)
+            const q = query(expensesRef, orderBy('date', 'desc'));
+
+            // onSnapshot busca todos os dados, o filtro de usuário é feito no cliente
+            unsubscribeListener = onSnapshot(q, (snapshot) => {
+                allUserExpenses = []; // Limpa o cache
+                
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    // Garante que o campo exista, definindo um padrão se não estiver presente
+                    data.applicationUser = data.applicationUser || 'RONALDO'; 
+                    allUserExpenses.push({ id: doc.id, ...data });
+                });
+                
+                // Chama a função que filtra e atualiza a interface
+                updateUI();
+
+            }, (error) => {
+                console.error("Erro ao carregar despesas em tempo real:", error);
+                document.getElementById('loadingMessage').textContent = "Erro ao carregar despesas.";
+                document.getElementById('loadingMessage').classList.remove('hidden');
+                displayMessage("Erro de conexão com o banco de dados.", "error");
+            });
+        }
+        
+        // 5. Função de Atualização da UI (Filtra e Renderiza)
+        function updateUI() {
+            // Garante que os elementos existam antes de tentar manipulá-los
+            const loadingMessage = document.getElementById('loadingMessage');
+            const noExpensesMessage = document.getElementById('noExpensesMessage');
+            const noExpensesUserDisplay = document.getElementById('noExpensesUser');
+            
+            if (!loadingMessage || !noExpensesMessage || !noExpensesUserDisplay) {
+                console.error("Erro: Elementos de status não encontrados no DOM.");
+                return; // Impede o erro de Null/Undefined
+            }
+
+            // Pega a data atual (ano e mês) para o filtro de mês
+            const now = new Date();
+            const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            // 1. Filtrar pelo usuário da aplicação selecionado
+            const filteredExpenses = allUserExpenses.filter(expense => 
+                expense.applicationUser === selectedAppUser
+            );
+            
+            let monthlyTotal = 0;
+            
+            // 2. Calcular o total mensal dentro do usuário filtrado
+            filteredExpenses.forEach(expense => {
+                const expenseDate = expense.date; // Formato YYYY-MM-DD
+                // Filtra despesas para o mês corrente DENTRO do usuário selecionado
+                if (expenseDate && expenseDate.startsWith(currentYearMonth)) {
+                    monthlyTotal += expense.value || 0;
+                }
+            });
+
+            // 3. Atualizar o total mensal no UI
+            document.getElementById('monthlyTotal').textContent = formatCurrency(monthlyTotal);
+            
+            // 4. Renderizar a lista de despesas filtrada
+            renderExpenses(filteredExpenses);
+
+            // 5. Exibir mensagens de estado
+            loadingMessage.classList.add('hidden');
+            noExpensesUserDisplay.textContent = selectedAppUser;
+            if (filteredExpenses.length === 0) {
+                noExpensesMessage.classList.remove('hidden');
+            } else {
+                noExpensesMessage.classList.add('hidden');
+            }
+
+            // Atualiza o nome do usuário ativo no cabeçalho
+            document.getElementById('activeUserName').textContent = selectedAppUser;
+        }
+
+        // 6. Configuração do Seletor de Usuário da Aplicação
+        const appUserSelector = document.getElementById('appUserSelector');
+        if (appUserSelector) {
+            appUserSelector.addEventListener('change', (e) => {
+                selectedAppUser = e.target.value;
+                // Chama updateUI para re-filtrar e renderizar a lista
+                updateUI(); 
+            });
+        }
+
+        // 7. Função de Renderização - Adiciona o nome do usuário da aplicação
+        function renderExpenses(expenses) {
+            const listElement = document.getElementById('expensesList');
+            // Como as mensagens de status agora estão fora, podemos limpar o contêiner da lista com segurança.
+            listElement.innerHTML = ''; 
+
+            if (expenses.length === 0) return;
+
+            expenses.forEach(expense => {
+                const dateParts = expense.date.split('-'); // [YYYY, MM, DD]
+                const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`; // DD/MM/YYYY
+                
+                // O applicationUser é garantido pela função setupExpensesListener
+                const appUserName = expense.applicationUser; 
+
+                const itemHtml = `
+                    <div class="flex justify-between items-center p-4 bg-gray-50 hover:bg-gray-100 rounded-lg shadow-sm border border-gray-100 transition duration-150 ease-in-out">
+                        <div>
+                            <p class="text-base font-medium text-gray-800">${expense.name}</p>
+                            <p class="text-xs text-gray-500 mt-0.5">Data: ${formattedDate} | Usuário: <span class="font-semibold text-indigo-600">${appUserName}</span></p>
+                        </div>
+                        <p class="text-lg font-bold text-red-600">${formatCurrency(expense.value)}</p>
+                    </div>
+                `;
+                listElement.insertAdjacentHTML('beforeend', itemHtml);
+            });
+        }
+    </script>
+</body>
+</html>
